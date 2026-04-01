@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Smart Trap Control</title>
+    <style>
+        :root {
+            --bg-color: #121212;
+            --surface-color: #1e1e1e;
+            --primary-color: #03dac6;
+            --danger-color: #cf6679;
+            --text-color: #ffffff;
+        }
+        body {
+            margin: 0; padding: 15px;
+            background-color: var(--bg-color); color: var(--text-color);
+            font-family: 'Segoe UI', Roboto, Helvetica, sans-serif;
+            display: flex; flex-direction: column; gap: 15px;
+        }
+        
+        /* The App Title (Now acts as a secret button) */
+        h2 { margin: 0; text-align: center; font-size: 22px; color: var(--primary-color); user-select: none; }
+        
+        /* Video Feeds */
+        .video-container {
+            background: var(--surface-color); padding: 10px;
+            border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            text-align: center;
+            position: relative; /* Crucial for placing the overlay inside */
+            overflow: hidden;
+        }
+        .video-container span { display: block; margin-bottom: 8px; font-weight: bold; color: #aaa; }
+        img { width: 100%; border-radius: 8px; background-color: #000; min-height: 200px; display: block; }
+
+        .stats-card {
+            background: var(--surface-color); padding: 20px;
+            border-radius: 12px; text-align: center; font-size: 24px; font-weight: bold;
+            border: 2px solid var(--primary-color);
+        }
+
+        .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        button {
+            background: var(--surface-color); color: var(--text-color);
+            border: 2px solid #444; padding: 20px 10px; border-radius: 12px;
+            font-size: 16px; font-weight: bold; cursor: pointer; transition: all 0.2s;
+        }
+        button:active { background: #444; transform: scale(0.95); }
+        .btn-danger { border-color: var(--danger-color); color: var(--danger-color); grid-column: span 2; }
+        .btn-danger:active { background: rgba(207, 102, 121, 0.2); }
+
+        /* ========================================= */
+        /* NEW: DEVELOPER MODE UI (HIDDEN BY DEFAULT)*/
+        /* ========================================= */
+        .dev-overlay {
+            display: none; /* Hidden! */
+            position: absolute; bottom: 15px; right: 15px;
+            background: rgba(0, 0, 0, 0.8); padding: 8px 15px;
+            border-radius: 20px; border: 1px solid var(--primary-color);
+            backdrop-filter: blur(4px);
+            align-items: center; justify-content: center; gap: 8px;
+            cursor: pointer; transition: 0.2s;
+        }
+        .dev-overlay:active { transform: scale(0.9); background: rgba(3, 218, 198, 0.3); }
+        .dev-overlay span { color: var(--primary-color); font-weight: bold; font-size: 14px; }
+        
+        /* The camera flash animation */
+        .flash-anim { animation: flash 0.3s ease-out; }
+        @keyframes flash {
+            0% { filter: brightness(1); }
+            50% { filter: brightness(3) contrast(1.5); }
+            100% { filter: brightness(1); }
+        }
+
+        /* Camera Tuning Settings */
+        .settings-btn {
+            background: transparent; color: var(--primary-color);
+            border: 1px solid var(--primary-color);
+            padding: 8px; border-radius: 8px; font-size: 12px;
+            margin-top: 10px; width: 100%;
+        }
+        .settings-panel {
+            display: none; /* Hidden by default */
+            flex-direction: column; gap: 12px;
+            background: #2a2a2a; padding: 15px;
+            border-radius: 8px; margin-top: 10px;
+            text-align: left; font-size: 14px;
+        }
+        .settings-panel label { display: flex; flex-direction: column; gap: 5px; color: #ddd; }
+        .settings-panel select, .settings-panel input[type=range] {
+            width: 100%; padding: 5px; background: #444; color: white; border: none; border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+
+    <h2 onclick="secretUnlock()">Cane Toad Smart Trap</h2>
+
+    <div class="stats-card">
+        Toads Captured: <span id="counter">0</span>
+    </div>
+
+    <div class="video-container">
+        <span>Entrance AI Vision (NoIR)</span>
+        <img id="noir-cam" src="/video_entrance" alt="Entrance Camera Loading...">
+        
+        <div class="dev-overlay" id="btn-noir" onclick="captureData()">
+            <span>📸 CAPTURE NoIR</span>
+        </div>
+    </div>
+
+    <div class="video-container">
+        <span>Internal Chamber CCTV (ESP32-CAM)</span>
+        <img id="esp-cam" src="http://10.42.0.145:81/stream" alt="ESP32 Camera Offline...">
+        
+        <div class="dev-overlay" id="btn-esp" onclick="captureESPData()">
+            <span>📸 CAPTURE ESP32</span>
+        </div>
+
+        <button class="settings-btn" onclick="toggleEspSettings()">⚙️ Camera Tuning</button>
+
+        <div id="esp-settings" class="settings-panel">
+            <label>Stream Resolution (Stability):
+                <select onchange="sendEspCommand('framesize', this.value)">
+                    <option value="5">Low (QVGA) - Most Stable</option>
+                    <option value="8" selected>Medium (VGA) - Balanced</option>
+                    <option value="10">High (XGA) - High Quality</option>
+                </select>
+            </label>
+
+            <label>Night Flashlight Intensity:
+                <input type="range" min="0" max="255" value="0" onchange="sendEspCommand('led_intensity', this.value)">
+            </label>
+
+            <label>Camera Brightness:
+                <input type="range" min="-2" max="2" value="0" onchange="sendEspCommand('brightness', this.value)">
+            </label>
+        </div>
+    </div>
+
+
+    <div class="controls">
+        <button onclick="triggerAction('front')">OPEN FRONT GATE</button>
+        <button onclick="triggerAction('rear')">OPEN REAR GATE</button>
+        <button class="btn-danger" onclick="triggerAction('euthanasia')">INITIATE CO2 CYCLE</button>
+    </div>
+
+    <script>
+        // --- 1. The Secret Unlock Logic ---
+        let tapCount = 0;
+        let tapTimer;
+
+        function secretUnlock() {
+            tapCount++;
+            clearTimeout(tapTimer);
+            
+            tapTimer = setTimeout(() => { tapCount = 0; }, 2000);
+            
+            if (tapCount === 5) {
+                const btnNoir = document.getElementById('btn-noir');
+                const btnEsp = document.getElementById('btn-esp');
+                
+                // Toggle both buttons on or off
+                if (btnNoir.style.display === "flex") {
+                    btnNoir.style.display = "none";
+                    btnEsp.style.display = "none";
+                } else {
+                    btnNoir.style.display = "flex";
+                    btnEsp.style.display = "flex";
+                    if (navigator.vibrate) navigator.vibrate(100); 
+                }
+                tapCount = 0; 
+            }
+        }
+
+        // --- 2. The NoIR Capture Logic ---
+        function captureData() {
+            const camImage = document.getElementById('noir-cam');
+            camImage.classList.remove('flash-anim'); 
+            void camImage.offsetWidth; 
+            camImage.classList.add('flash-anim');
+            if (navigator.vibrate) navigator.vibrate(50); 
+
+            fetch('/api/capture', { method: 'POST' });
+        }
+
+        // --- 3. The ESP32 Capture Logic ---
+        function captureESPData() {
+            const camImage = document.getElementById('esp-cam');
+            camImage.classList.remove('flash-anim'); 
+            void camImage.offsetWidth; 
+            camImage.classList.add('flash-anim');
+            if (navigator.vibrate) navigator.vibrate(50); 
+
+            // Call the new Python API for the ESP32
+            fetch('/api/capture_esp', { method: 'POST' })
+                .then(response => response.json())
+                .then(data => console.log("ESP32 Capture:", data.message))
+                .catch(err => alert("ESP32 Capture Failed! Is it powered on?"));
+        }
+
+        // --- Existing Trap Logic ---
+        function triggerAction(action) {
+            if(action === 'euthanasia' && !confirm("WARNING: Trigger floor drop and CO2 sequence?")) return;
+            fetch('/api/trigger/' + action, { method: 'POST' });
+        }
+
+        setInterval(() => {
+            fetch('/api/stats')
+                .then(response => response.json())
+                .then(data => { document.getElementById('counter').innerText = data.caught; });
+        }, 2000);
+
+        // --- 4. ESP32 Hardware Tuning Logic ---
+        function toggleEspSettings() {
+            const panel = document.getElementById('esp-settings');
+            // Toggle the panel open and closed
+            panel.style.display = (panel.style.display === 'flex') ? 'none' : 'flex';
+        }
+
+        function sendEspCommand(variable, value) {
+            // Send the hardware command to the Flask API as a JSON package
+            fetch('/api/esp_control', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ var: variable, val: value })
+            })
+            .then(response => response.json())
+            .then(data => console.log(`ESP32 Tuned: ${variable} = ${value}`))
+            .catch(err => alert("Failed to tune camera! Is it online?"));
+        }
+    </script>
+</body>
+</html>

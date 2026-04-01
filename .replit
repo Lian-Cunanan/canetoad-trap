@@ -1,0 +1,15 @@
+[run]
+channel = "python312"
+language = "python3"
+entrypoint = "main.py"
+
+[packager]
+language = "python3"
+ignoredPaths = ["__pycache__"]
+
+[packager.features]
+packageSearch = true
+guessImports = true
+
+[nix]
+channel = "stable-22_11"
