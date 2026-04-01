@@ -19,12 +19,9 @@ android.minapi = 21
 android.ndk = 25b
 android.accept_sdk_license = True
 
-# Flet-specific settings
-p4a.source_dir = ~/.buildozer/android/platform/build-{arch}/build/other_builds/python3/
-p4a.branch = develop
-
 [buildozer]
 log_level = 2
 warn_on_root = 1
+
 
 
